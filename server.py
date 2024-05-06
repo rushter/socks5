@@ -5,16 +5,20 @@ import struct
 from socketserver import ThreadingMixIn, TCPServer, StreamRequestHandler
 
 logging.basicConfig(level=logging.DEBUG)
-SOCKS_VERSION = 5
 
+SOCKS_VERSION = 5
+SOCKS_ADDR = '127.0.0.1'
+SOCKS_PORT = 1080
+SOCKS_USER = 'username'
+SOCKS_PASS = 'password'
 
 class ThreadingTCPServer(ThreadingMixIn, TCPServer):
     pass
 
 
 class SocksProxy(StreamRequestHandler):
-    username = 'username'
-    password = 'password'
+    username = SOCKS_USER
+    password = SOCKS_PASS
 
     def handle(self):
         logging.info('Accepting connection from %s:%s' % self.client_address)
@@ -48,17 +52,21 @@ class SocksProxy(StreamRequestHandler):
         assert version == SOCKS_VERSION
 
         if address_type == 1:  # IPv4
-            address = socket.inet_ntoa(self.connection.recv(4))
+            inet_type = socket.AF_INET
+            address = socket.inet_ntop(inet_type, self.connection.recv(4))
         elif address_type == 3:  # Domain name
             domain_length = self.connection.recv(1)[0]
             address = self.connection.recv(domain_length)
             address = socket.gethostbyname(address)
+        elif address_type == 4: # IPv6
+            inet_type = socket.AF_INET6
+            address = socket.inet_ntop(inet_type, self.connection.recv(16))
         port = struct.unpack('!H', self.connection.recv(2))[0]
 
         # reply
         try:
             if cmd == 1:  # CONNECT
-                remote = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                remote = socket.socket(inet_type, socket.SOCK_STREAM)
                 remote.connect((address, port))
                 bind_address = remote.getsockname()
                 logging.info('Connected to %s %s' % (address, port))
@@ -133,5 +141,5 @@ class SocksProxy(StreamRequestHandler):
 
 
 if __name__ == '__main__':
-    with ThreadingTCPServer(('127.0.0.1', 9011), SocksProxy) as server:
+    with ThreadingTCPServer((SOCKS_ADDR, SOCKS_PORT), SocksProxy) as server:
         server.serve_forever()
